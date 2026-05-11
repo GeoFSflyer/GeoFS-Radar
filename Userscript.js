@@ -20,16 +20,31 @@
   const KEY_RANGE_UP = "y";
   const KEY_RANGE_DOWN = "u";
 
-  // Extended to AWACS ranges
   const RANGE_OPTIONS_NM = [2, 5, 10, 20, 40, 80, 160, 200, 300];
   const LABEL_REFRESH_MS = 180;
   const CONTACT_STALE_MS = 10000;
+
+  const THEME = {
+    panelBg: "rgba(17, 20, 24, 0.96)",
+    panelBorder: "rgba(255, 255, 255, 0.10)",
+    panelBorderStrong: "rgba(255, 255, 255, 0.14)",
+    text: "#d8dee9",
+    textMuted: "#98a2b3",
+    canvasBg: "#0f1216",
+    grid: "rgba(216, 222, 233, 0.12)",
+    crosshair: "rgba(216, 222, 233, 0.72)",
+    sweep: "rgba(124, 156, 191, 0.22)",
+    sweepTail: "rgba(124, 156, 191, 0.10)",
+    contact: "#cfd6df",
+    selected: "#ffd166",
+    locked: "#ff6b6b"
+  };
 
   const state = {
     enabled: false,
     selectedUid: null,
     lockedUid: null,
-    rangeIndex: 3, // Defaults to 20NM
+    rangeIndex: 3,
     overlay: null,
     header: null,
     canvas: null,
@@ -383,7 +398,6 @@
     const distanceText = formatDistanceText(metrics?.distanceNm);
     const altitudeText = formatAltitudeFeet(metrics?.altFeet);
 
-    // Cleaned up, label-less locked tag
     return `${callsign} ${speedText} ${closureText} ${distanceText} ${altitudeText}`;
   }
 
@@ -484,34 +498,37 @@
       top: "88px",
       width: `${state.panelW}px`,
       height: `${state.panelH}px`,
-      background: "rgba(0,0,0,0.84)",
-      border: "1px solid #00ff66",
-      borderRadius: "8px",
-      boxShadow: "0 0 20px rgba(0,255,102,0.18)",
-      color: "#00ff66",
-      fontFamily: "monospace",
+      background: THEME.panelBg,
+      border: `1px solid ${THEME.panelBorder}`,
+      borderRadius: "10px",
+      boxShadow: "none",
+      color: THEME.text,
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
       zIndex: "999999",
       display: "none",
       userSelect: "none",
       overflow: "hidden",
-      pointerEvents: "auto"
+      pointerEvents: "auto",
+      backdropFilter: "blur(6px)"
     });
 
     const header = document.createElement("div");
     Object.assign(header.style, {
-      height: "28px",
+      height: "30px",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 8px",
-      borderBottom: "1px solid rgba(0,255,102,0.28)",
+      padding: "0 10px",
+      borderBottom: `1px solid ${THEME.panelBorderStrong}`,
       cursor: "move",
-      fontSize: "12px",
-      letterSpacing: "0.4px"
+      fontSize: "11px",
+      letterSpacing: "0.8px",
+      color: THEME.textMuted,
+      textTransform: "uppercase"
     });
 
     const title = document.createElement("div");
-    title.textContent = "RADAR";
+    title.textContent = "Radar";
 
     const rangeText = document.createElement("div");
     rangeText.textContent = "20NM";
@@ -521,17 +538,18 @@
       display: "block",
       width: `${state.canvasCssW}px`,
       height: `${state.canvasCssH}px`,
-      background: "#000"
+      background: THEME.canvasBg
     });
 
     const footer = document.createElement("div");
     Object.assign(footer.style, {
       height: "100px",
-      borderTop: "1px solid rgba(0,255,102,0.28)",
-      padding: "6px 8px",
+      borderTop: `1px solid ${THEME.panelBorderStrong}`,
+      padding: "8px 10px",
       fontSize: "11px",
-      lineHeight: "1.25",
-      whiteSpace: "pre-line"
+      lineHeight: "1.3",
+      whiteSpace: "pre-line",
+      color: THEME.text
     });
 
     header.appendChild(title);
@@ -648,10 +666,10 @@
     ensureSelection(contacts);
 
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = THEME.canvasBg;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = "rgba(0,255,102,0.18)";
+    ctx.strokeStyle = THEME.grid;
     ctx.lineWidth = 1;
     for (let i = 1; i <= 4; i++) {
       ctx.beginPath();
@@ -667,20 +685,22 @@
     ctx.stroke();
 
     const sweepAngle = ((timestamp * 0.0012) % (Math.PI * 2));
-    for (let i = 0; i < 10; i++) {
-      const a = sweepAngle - i * 0.06;
-      const alpha = 0.22 - i * 0.018;
+    for (let i = 0; i < 8; i++) {
+      const a = sweepAngle - i * 0.05;
+      const alpha = 0.20 - i * 0.022;
       if (alpha <= 0) continue;
-      ctx.strokeStyle = `rgba(0,255,102,${alpha})`;
-      ctx.lineWidth = i === 0 ? 2 : 1;
+      ctx.strokeStyle = i === 0
+        ? `rgba(124, 156, 191, ${alpha})`
+        : `rgba(124, 156, 191, ${Math.max(0.04, alpha * 0.55)})`;
+      ctx.lineWidth = i === 0 ? 1.4 : 1;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.sin(a) * radius, cy - Math.cos(a) * radius);
       ctx.stroke();
     }
 
-    ctx.strokeStyle = "rgba(255,255,255,0.75)";
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = THEME.crosshair;
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
     ctx.moveTo(cx, cy - 8);
     ctx.lineTo(cx, cy + 8);
@@ -696,19 +716,19 @@
       const isSelected = c.uid === state.selectedUid;
       const isLocked = c.uid === state.lockedUid;
 
-      ctx.fillStyle = isLocked ? "#ff3333" : isSelected ? "#ffff33" : "#ffffff";
+      ctx.fillStyle = isLocked ? THEME.locked : isSelected ? THEME.selected : THEME.contact;
       ctx.beginPath();
-      ctx.arc(x, y, isLocked ? 4 : 2.7, 0, Math.PI * 2);
+      ctx.arc(x, y, isLocked ? 3.8 : 2.6, 0, Math.PI * 2);
       ctx.fill();
 
       if (isSelected || isLocked) {
-        ctx.strokeStyle = isLocked ? "#ff3333" : "#ffff33";
+        ctx.strokeStyle = isLocked ? THEME.locked : THEME.selected;
         ctx.lineWidth = 1;
-        ctx.strokeRect(x - 6, y - 6, 12, 12);
+        ctx.strokeRect(x - 5.5, y - 5.5, 11, 11);
       }
     }
 
-    state.title.textContent = `RADAR ${contacts.length}`;
+    state.title.textContent = `Radar ${contacts.length}`;
     state.rangeText.textContent = `${rangeNm}NM`;
     state.footer.textContent = getPanelTargetInfo(contacts);
   }
@@ -764,7 +784,7 @@
       stepRange(1);
       return;
     }
-    
+
     if (key === KEY_RANGE_DOWN) {
       stepRange(-1);
     }
