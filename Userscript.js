@@ -1,7 +1,8 @@
 // ==UserScript==
-// @name         GeoFS Radar Addon 
+// @name         GeoFS Radar Addon Improved
 // @namespace    geofs-local
-// @version      1.2
+// @version      1.3
+// @description  Draggable radar window with clean tag blocking, target cycling, lock tag, richer target stats, and extended ranges
 // @match        https://www.geo-fs.com/*
 // @match        https://geo-fs.com/*
 // @match        https://legacy.geo-fs.com/*
@@ -16,9 +17,11 @@
   const KEY_NEXT = "w";
   const KEY_PREV = "r";
   const KEY_LOCK = "l";
-  const KEY_RANGE = "y";
+  const KEY_RANGE_UP = "y";
+  const KEY_RANGE_DOWN = "u";
 
-  const RANGE_OPTIONS_NM = [2, 5, 10, 20, 40, 80];
+  // Extended to AWACS ranges
+  const RANGE_OPTIONS_NM = [2, 5, 10, 20, 40, 80, 160, 200, 300];
   const LABEL_REFRESH_MS = 180;
   const CONTACT_STALE_MS = 10000;
 
@@ -26,7 +29,7 @@
     enabled: false,
     selectedUid: null,
     lockedUid: null,
-    rangeIndex: 3,
+    rangeIndex: 3, // Defaults to 20NM
     overlay: null,
     header: null,
     canvas: null,
@@ -43,7 +46,6 @@
     dragOffsetX: 0,
     dragOffsetY: 0,
     labelTickAt: 0,
-    labelCounter: 0,
     contactCache: Object.create(null),
     rafId: 0
   };
@@ -304,10 +306,6 @@
     ensureSelection(contacts);
   }
 
-  function cycleRangeFromY(reverse) {
-    stepRange(reverse ? -1 : 1);
-  }
-
   function toggleLock() {
     const contacts = getInRangeContacts();
     ensureSelection(contacts);
@@ -379,19 +377,14 @@
   function formatLockedLabel(user) {
     const metrics = getLiveTargetMetrics(user);
     const callsign = String(user?.callsign ?? user?.cs ?? "NA").trim() || "NA";
-    const aircraftName = String(user?.aircraftName ?? "UNKNOWN").trim() || "UNKNOWN";
-
-    const showAircraftTypeEvery = 10;
-    const displayAircraftTypeDuration = 2;
-    const showAircraftType = (state.labelCounter % showAircraftTypeEvery) < displayAircraftTypeDuration;
-    const leftText = showAircraftType ? aircraftName : callsign;
 
     const speedText = metrics?.speedKts != null ? `${metrics.speedKts}KT` : "--";
     const closureText = formatClosureText(metrics?.closureKts);
     const distanceText = formatDistanceText(metrics?.distanceNm);
     const altitudeText = formatAltitudeFeet(metrics?.altFeet);
 
-    return `${leftText} SPD ${speedText} VC ${closureText} RNG ${distanceText} ALT ${altitudeText}`;
+    // Cleaned up, label-less locked tag
+    return `${callsign} ${speedText} ${closureText} ${distanceText} ${altitudeText}`;
   }
 
   function updateLockedLabel() {
@@ -558,6 +551,7 @@
 
     resizeCanvas();
     bindDrag();
+    bindWheelRange();
   }
 
   function resizeCanvas() {
@@ -566,6 +560,14 @@
     state.canvas.width = Math.round(state.canvasCssW * state.dpr);
     state.canvas.height = Math.round(state.canvasCssH * state.dpr);
     state.ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  }
+
+  function bindWheelRange() {
+    state.overlay.addEventListener("wheel", function (e) {
+      if (!state.enabled) return;
+      e.preventDefault();
+      stepRange(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
   }
 
   function bindDrag() {
@@ -607,7 +609,7 @@
     const target = locked || selected;
     const isLocked = !!locked;
 
-    if (!target) return "NO TARGET\nLOCK NONE\nQ TOGGLE  W/R SEL  Y RNG  L LOCK";
+    if (!target) return "NO TARGET\nLOCK NONE\nQ TOGGLE  W/R SEL  Y/U RNG  L LOCK";
 
     const liveUser = getAllUsersMap().get(target.uid);
     const liveMetrics = liveUser ? getLiveTargetMetrics(liveUser) : null;
@@ -627,7 +629,7 @@
       `${target.aircraftName}`,
       `SPD ${speedText}  ALT ${altitudeText}  HDG ${headingText}`,
       `RNG ${distanceText}  VC ${closureText}  BRG ${bearingText}`,
-      `DALT ${altDeltaText}  Q TOGGLE  W/R SEL  Y RNG  L LOCK`
+      `DALT ${altDeltaText}  Q TOGGLE  W/R SEL  Y/U RNG  L LOCK`
     ].join("\n");
   }
 
@@ -718,7 +720,6 @@
       const now = Date.now();
       if (now - state.labelTickAt >= LABEL_REFRESH_MS) {
         state.labelTickAt = now;
-        state.labelCounter++;
         applyLabelPolicy();
         updateLockedLabel();
       }
@@ -731,7 +732,7 @@
     if (event.repeat) return;
 
     const key = String(event.key || "").toLowerCase();
-    const handled = [KEY_TOGGLE, KEY_NEXT, KEY_PREV, KEY_LOCK, KEY_RANGE].includes(key);
+    const handled = [KEY_TOGGLE, KEY_NEXT, KEY_PREV, KEY_LOCK, KEY_RANGE_UP, KEY_RANGE_DOWN].includes(key);
     if (!handled) return;
 
     event.preventDefault();
@@ -759,8 +760,13 @@
       return;
     }
 
-    if (key === KEY_RANGE) {
-      cycleRangeFromY(event.shiftKey);
+    if (key === KEY_RANGE_UP) {
+      stepRange(1);
+      return;
+    }
+    
+    if (key === KEY_RANGE_DOWN) {
+      stepRange(-1);
     }
   }
 
